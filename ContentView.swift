@@ -31,6 +31,16 @@ struct ContentView: View {
             .sorted { $0.symbol < $1.symbol }
     }
     
+    private var portfolioSummary: (totalInvested: Double, totalValue: Double, totalProfit: Double) {
+            let totalInvested = groupedTransactions.reduce(0.0) { $0 + $1.totalInvested }
+            let totalValue = groupedTransactions.reduce(0.0) { sum, item in
+                guard let price = prices[item.coinId] else { return sum }
+                return sum + item.totalAmount * price
+            }
+            let totalProfit = totalValue - totalInvested
+            return (totalInvested, totalValue, totalProfit)
+        }
+    
     var body: some View {
         NavigationStack {
             List {
@@ -63,6 +73,36 @@ struct ContentView: View {
                         }
                     }
                 }
+            }
+            .safeAreaInset(edge: .bottom) {
+                HStack {
+                    Text("Total")
+                        .font(.headline)
+                    Spacer()
+                    VStack(alignment: .trailing) {
+                        Text("$\(portfolioSummary.totalInvested, specifier: "%.2f")")
+                        if portfolioSummary.totalValue > 0 {
+                            let profit = portfolioSummary.totalProfit
+                            Text("$\(portfolioSummary.totalValue, specifier: "%.2f")")
+                                .foregroundColor(profit > 0 ? .green : .red)
+                        }
+                    }
+                    .font(.caption)
+                    Spacer()
+                    if portfolioSummary.totalValue > 0 {
+                        let profit = portfolioSummary.totalProfit
+                        let percentage = portfolioSummary.totalInvested != 0 ? profit / portfolioSummary.totalInvested * 100 : 0
+                        Text("$\(profit, specifier: "%.2f") (\(profit > 0 ? "+" : "")\(percentage, specifier: "%.1f")%)")
+                            .foregroundColor(profit > 0 ? .green : .red)
+                            .font(.caption)
+                    } else {
+                        Text("Fetching...")
+                            .font(.caption)
+                    }
+                }
+                .padding()
+                .background(Color(.systemBackground))
+                .border(.gray.opacity(0.2), width: 1)
             }
             .overlay {
                 if isLoading && prices.isEmpty {

@@ -19,8 +19,23 @@ struct TransactionDetailView: View {
         List {
             Section("Transactions") {
                 ForEach(transactions) { tx in
-                    Text("$\(tx.amountUSD, specifier: "%.2f") @ \(tx.pricePerUnitUSD, specifier: "%.2f") on \(tx.date.formatted(date: .numeric, time: .omitted))")
+                    HStack {
+                        Text("\(tx.amount, specifier: "%.4f")")
+                            .font(.caption)
+                        Text(symbol)
+                            .font(.headline)
+                        Spacer()
+                        VStack(alignment: .trailing) {
+                            Text("$\(tx.amountUSD, specifier: "%.2f")")
+                            Text("$\(tx.pricePerUnitUSD, specifier: "%.2f")")
+                                .foregroundColor(.secondary)
+                        }
                         .font(.caption)
+                        Spacer()
+                        Text(tx.date.formatted(date: .numeric, time: .omitted))
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                    }
                 }
                 .onDelete { idx in
                     for i in idx { context.delete(transactions[i]) }
@@ -43,7 +58,7 @@ struct TransactionDetailView: View {
                     name: name,
                     pricePerUnitUSD: price,
                     amount: amount,
-                    coinId: coinId.isEmpty ? transactions.first?.coinId ?? symbol.lowercased() : coinId
+                    coinId: coinId.isEmpty ? symbol.lowercased() : coinId
                 )
                 context.insert(tx)
                 try? context.save()
