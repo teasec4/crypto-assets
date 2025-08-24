@@ -5,12 +5,21 @@ import Combine // Added for Timer.publish
 struct ContentView: View {
     @Environment(\.modelContext) private var context
     @Query(sort: [SortDescriptor(\Transaction.symbol, order: .forward)]) private var transactions: [Transaction]
+    @Query private var alerts: [PriceAlert]
     
     @State private var prices: [String: Double] = [:]
     @State private var isLoading = false
     @State private var showAdd = false
     @State private var errorMessage: String?
     let timer = Timer.publish(every: 300, on: .main, in: .common).autoconnect()
+//    let testTimer = Timer.publish(every: 10, on: .main, in: .common).autoconnect() // Test timer (10 sec)
+//    @State private var isTestTimerEnabled = false // Toggle for test timer
+    
+    private let alertManager: PriceAlertManager
+
+    init() {
+        self.alertManager = PriceAlertManager(modelContext: ModelContext(try! ModelContainer(for: Transaction.self, PriceAlert.self)))
+    }
     
     private var groupedTransactions: [(symbol: String, totalAmount: Double, totalInvested: Double, coinId: String)] {
         var grouped: [String: (totalAmount: Double, totalInvested: Double, coinId: String)] = [:]
@@ -44,31 +53,46 @@ struct ContentView: View {
     var body: some View {
         NavigationStack {
             List {
-                ForEach(groupedTransactions, id: \.symbol) { item in
-                    NavigationLink(destination: TransactionDetailView(symbol: item.symbol, price:prices[item.coinId] ?? 0.0)) {
-                        HStack {
+                Section("Assets"){
+                    ForEach(groupedTransactions, id: \.symbol) { item in
+                        NavigationLink(destination: TransactionDetailView(symbol: item.symbol, price:prices[item.coinId] ?? 0.0)) {
                             HStack {
-                                Text("\(item.totalAmount, specifier: "%.4f")")
-                                Text(item.symbol)
-                                    .font(.headline)
-                            }
-                            Spacer()
-                            if let price = prices[item.coinId] {
-                                let value = item.totalAmount * price
-                                let profit = value - item.totalInvested
-                                VStack(alignment: .trailing) {
-                                    Text("$\(item.totalInvested, specifier: "%.2f")")
-                                    Text("$\(value, specifier: "%.2f")")
-                                        .foregroundColor(.secondary)
+                                HStack {
+                                    Text("\(item.totalAmount, specifier: "%.4f")")
+                                    Text(item.symbol)
+                                        .font(.headline)
                                 }
-                                .font(.caption)
                                 Spacer()
-                                Text("$\(profit, specifier: "%.2f") (\(profit > 0 ? "+" : "")\(profit / (item.totalInvested != 0 ? item.totalInvested : 1) * 100, specifier: "%.1f")%)")
-                                    .foregroundColor(profit > 0 ? .green : .red)
+                                if let price = prices[item.coinId] {
+                                    let value = item.totalAmount * price
+                                    let profit = value - item.totalInvested
+                                    VStack(alignment: .trailing) {
+                                        Text("$\(item.totalInvested, specifier: "%.2f")")
+                                        Text("$\(value, specifier: "%.2f")")
+                                            .foregroundColor(.secondary)
+                                    }
                                     .font(.caption)
-                            } else {
-                                Text("Fetching price... (ID: \(item.coinId))")
+                                    Spacer()
+                                    Text("$\(profit, specifier: "%.2f") (\(profit > 0 ? "+" : "")\(profit / (item.totalInvested != 0 ? item.totalInvested : 1) * 100, specifier: "%.1f")%)")
+                                        .foregroundColor(profit > 0 ? .green : .red)
+                                        .font(.caption)
+                                } else {
+                                    Text("Fetching price... (ID: \(item.coinId))")
+                                        .font(.caption)
+                                }
+                            }
+                        }
+                    }
+                }
+                Section("Alerts"){
+                    ForEach(alerts) { alert in
+                        NavigationLink(destination: TransactionDetailView(symbol: alert.symbol, price:prices[alert.coinId] ?? 0.0)){
+                            HStack {
+                                Text("\(alert.symbol) $\(alert.referencePrice, default: "%.2f") (\(alert.signedPercentage > 0 ? "+" : "")\(alert.signedPercentage.formatted(.number.precision(.fractionLength(1))))%)")
+                                Spacer()
+                                Text(alert.createdAt.formatted(date: .numeric, time: .omitted))
                                     .font(.caption)
+                                    .foregroundColor(.secondary)
                             }
                         }
                     }
@@ -121,6 +145,11 @@ struct ContentView: View {
                         Image(systemName: "arrow.clockwise")
                     }
                 }
+//                ToolbarItem(placement: .bottomBar) {
+//                                Button(isTestTimerEnabled ? "Stop Test Timer" : "Start Test Timer") {
+//                                    isTestTimerEnabled.toggle()
+//                                }
+//                            }
             }
             .sheet(isPresented: $showAdd) {
                 AddTransactionView { symbol, name, amount, price, coinId in
@@ -133,14 +162,24 @@ struct ContentView: View {
             .task {
                 await preloadTopPrices()
                 await loadPrices()
+                await alertManager.requestNotificationPermission()
             }
             .onReceive(timer) { _ in
                 Task { await loadPrices() }
             }
-            .refreshable { await loadPrices() }
-            .alert(item: $errorMessage) { message in
-                Alert(title: Text("Ошибка"), message: Text(message), dismissButton: .default(Text("OK")))
-            }
+//            .onReceive(testTimer) { _ in
+//                        if isTestTimerEnabled {
+//                            Task {
+//                                prices["bitcoin"] = 30000.0 // Simulate -50% for BTC
+//                                print("Test timer triggered: Set bitcoin price to 30000.0")
+//                                await alertManager.checkPriceAlerts(prices: prices)
+//                            }
+//                        }
+//                    }
+//            .refreshable { await loadPrices() }
+//            .alert(item: $errorMessage) { message in
+//                Alert(title: Text("Ошибка"), message: Text(message), dismissButton: .default(Text("OK")))
+//            }
         }
     }
     
@@ -162,7 +201,9 @@ struct ContentView: View {
         do {
             let newPrices = try await CoinGeckoService.shared.fetchPrices(for: Array(uniqueIds))
             prices.merge(newPrices) { $1 }
+            // Simulate a price change for testing
             print("Loaded prices: \(prices)")
+            await alertManager.checkPriceAlerts(prices: prices) // Use full prices dictionary
         } catch {
             errorMessage = "Не удалось загрузить цены: \(error.localizedDescription)"
             print("Price load error: \(error)")
@@ -177,7 +218,7 @@ extension String: Identifiable {
 
 #Preview {
     let container = try! ModelContainer(
-        for: Transaction.self,
+        for: Transaction.self, PriceAlert.self,
         configurations: ModelConfiguration(isStoredInMemoryOnly: true)
     )
     
@@ -195,7 +236,6 @@ extension String: Identifiable {
     return ContentView()
         .modelContainer(container)
         .environment(\.locale, .init(identifier: "ru"))
-        .environment(\.prices, ["bitcoin": 60000, "ethereum": 2500, "solana": 120])
 }
 
 private extension EnvironmentValues {
