@@ -45,7 +45,7 @@ struct ContentView: View {
         NavigationStack {
             List {
                 ForEach(groupedTransactions, id: \.symbol) { item in
-                    NavigationLink(destination: TransactionDetailView(symbol: item.symbol)) {
+                    NavigationLink(destination: TransactionDetailView(symbol: item.symbol, price:prices[item.coinId] ?? 0.0)) {
                         HStack {
                             HStack {
                                 Text("\(item.totalAmount, specifier: "%.4f")")

@@ -6,9 +6,11 @@ struct TransactionDetailView: View {
     @Query private var transactions: [Transaction]
     @State private var showAdd = false
     let symbol: String
+    let price : Double
     
-    init(symbol: String) {
+    init(symbol: String, price: Double) {
         self.symbol = symbol
+        self.price = price
         _transactions = Query(
             filter: #Predicate<Transaction> { $0.symbol == symbol },
             sort: [SortDescriptor(\.date, order: .reverse)]
@@ -42,8 +44,11 @@ struct TransactionDetailView: View {
                     try? context.save()
                 }
             }
+            Section("Set Price Alert"){
+                
+            }
         }
-        .navigationTitle(symbol)
+        .navigationTitle("\(symbol) $\(price, specifier: "%.2f")")
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
                 Button(action: { showAdd = true }) {
