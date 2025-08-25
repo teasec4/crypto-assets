@@ -12,11 +12,11 @@ struct ContentView: View {
     @State private var showAdd = false
     @State private var errorMessage: String?
     let timer = Timer.publish(every: 300, on: .main, in: .common).autoconnect()
-//    let testTimer = Timer.publish(every: 10, on: .main, in: .common).autoconnect() // Test timer (10 sec)
-//    @State private var isTestTimerEnabled = false // Toggle for test timer
+    //    let testTimer = Timer.publish(every: 10, on: .main, in: .common).autoconnect() // Test timer (10 sec)
+    //    @State private var isTestTimerEnabled = false // Toggle for test timer
     
     private let alertManager: PriceAlertManager
-
+    
     init() {
         self.alertManager = PriceAlertManager(modelContext: ModelContext(try! ModelContainer(for: Transaction.self, PriceAlert.self)))
     }
@@ -41,18 +41,40 @@ struct ContentView: View {
     }
     
     private var portfolioSummary: (totalInvested: Double, totalValue: Double, totalProfit: Double) {
-            let totalInvested = groupedTransactions.reduce(0.0) { $0 + $1.totalInvested }
-            let totalValue = groupedTransactions.reduce(0.0) { sum, item in
-                guard let price = prices[item.coinId] else { return sum }
-                return sum + item.totalAmount * price
-            }
-            let totalProfit = totalValue - totalInvested
-            return (totalInvested, totalValue, totalProfit)
+        let totalInvested = groupedTransactions.reduce(0.0) { $0 + $1.totalInvested }
+        let totalValue = groupedTransactions.reduce(0.0) { sum, item in
+            guard let price = prices[item.coinId] else { return sum }
+            return sum + item.totalAmount * price
         }
+        let totalProfit = totalValue - totalInvested
+        return (totalInvested, totalValue, totalProfit)
+    }
     
     var body: some View {
         NavigationStack {
             List {
+                Section("Price"){
+                    VStack{
+                        LazyVGrid(columns: [
+                            GridItem(.flexible(), spacing: 10),
+                            GridItem(.flexible(), spacing: 10)
+                        ], spacing: 10) {
+                            ForEach(groupedTransactions, id: \.symbol) { item in
+                                if let price = prices[item.coinId] {
+                                    MiniCardView(symbol: item.symbol, price: price)
+                                } else {
+                                    MiniCardView(symbol: item.symbol, price: 0.0)
+                                        .overlay(
+                                            Text("Fetching...")
+                                                .font(.caption)
+                                                .foregroundColor(.secondary)
+                                        )
+                                }
+                            }
+                        }
+                    }
+                    
+                }
                 Section("Assets"){
                     ForEach(groupedTransactions, id: \.symbol) { item in
                         NavigationLink(destination: TransactionDetailView(symbol: item.symbol, price:prices[item.coinId] ?? 0.0)) {
@@ -145,11 +167,11 @@ struct ContentView: View {
                         Image(systemName: "arrow.clockwise")
                     }
                 }
-//                ToolbarItem(placement: .bottomBar) {
-//                                Button(isTestTimerEnabled ? "Stop Test Timer" : "Start Test Timer") {
-//                                    isTestTimerEnabled.toggle()
-//                                }
-//                            }
+                //                ToolbarItem(placement: .bottomBar) {
+                //                                Button(isTestTimerEnabled ? "Stop Test Timer" : "Start Test Timer") {
+                //                                    isTestTimerEnabled.toggle()
+                //                                }
+                //                            }
             }
             .sheet(isPresented: $showAdd) {
                 AddTransactionView { symbol, name, amount, price, coinId in
@@ -167,19 +189,19 @@ struct ContentView: View {
             .onReceive(timer) { _ in
                 Task { await loadPrices() }
             }
-//            .onReceive(testTimer) { _ in
-//                        if isTestTimerEnabled {
-//                            Task {
-//                                prices["bitcoin"] = 30000.0 // Simulate -50% for BTC
-//                                print("Test timer triggered: Set bitcoin price to 30000.0")
-//                                await alertManager.checkPriceAlerts(prices: prices)
-//                            }
-//                        }
-//                    }
-//            .refreshable { await loadPrices() }
-//            .alert(item: $errorMessage) { message in
-//                Alert(title: Text("Ошибка"), message: Text(message), dismissButton: .default(Text("OK")))
-//            }
+            //            .onReceive(testTimer) { _ in
+            //                        if isTestTimerEnabled {
+            //                            Task {
+            //                                prices["bitcoin"] = 30000.0 // Simulate -50% for BTC
+            //                                print("Test timer triggered: Set bitcoin price to 30000.0")
+            //                                await alertManager.checkPriceAlerts(prices: prices)
+            //                            }
+            //                        }
+            //                    }
+            //            .refreshable { await loadPrices() }
+            //            .alert(item: $errorMessage) { message in
+            //                Alert(title: Text("Ошибка"), message: Text(message), dismissButton: .default(Text("OK")))
+            //            }
         }
     }
     
