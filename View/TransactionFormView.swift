@@ -20,18 +20,18 @@ struct TransactionFormView: View {
     var body: some View {
         NavigationStack {
             Form {
-                Section("Coin") {
-                    HStack {
-                        Text("Symbol")
-                        Spacer()
-                        Text(coin.symbol).foregroundStyle(.secondary)
-                    }
-                    HStack {
-                        Text("Name")
-                        Spacer()
-                        Text(coin.name).foregroundStyle(.secondary)
-                    }
-                }
+//                Section("Coin") {
+//                    HStack {
+//                        Text("Symbol")
+//                        Spacer()
+//                        Text(coin.symbol).foregroundStyle(.secondary)
+//                    }
+//                    HStack {
+//                        Text("Name")
+//                        Spacer()
+//                        Text(coin.name).foregroundStyle(.secondary)
+//                    }
+//                }
 
                 Section("Details") {
                     TextField("Name (optional)", text: $name)

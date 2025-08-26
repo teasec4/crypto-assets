@@ -53,8 +53,15 @@ struct AssetRow: View {
                 ProfitChip(profit: profit, percent: percent)
             }
         }
-        .padding(.vertical, 6)
-        .contentShape(Rectangle())
+        .padding()
+        .background(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .fill(.ultraThinMaterial)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .stroke(.black.opacity(0.06), lineWidth: 1)
+        )
     }
 
     private func iconName(for symbol: String) -> String {

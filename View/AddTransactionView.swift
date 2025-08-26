@@ -55,7 +55,7 @@ struct AddTransactionView: View {
             Form {
                 Section("Coin") {
                     Picker("Select coin", selection: $selectedCoinId) {
-                        Text("— select —").tag("")
+                        Text("select").tag("")
                         ForEach(allCoinsForPicker, id: \.id) { coin in
                             Text("\(coin.symbol) — \(coin.name)").tag(coin.id)
                         }
