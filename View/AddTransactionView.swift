@@ -5,91 +5,139 @@ struct AddTransactionView: View {
     @Environment(\.dismiss) private var dismiss
     @Query private var transactions: [Transaction]
     
+    // выбор монеты
     @State private var selectedCoinId = ""
     @State private var selectedCoin: Coin? = nil
-    @State private var amount = ""
-    @State private var price = ""
-    @State private var name = ""
-    @State private var showSearchSheet = false  // Для открытия Sheet с поиском
+    @State private var showSearchSheet = false
+    @State private var showForm = false
     
-    private let popularCoins = [
-        Coin(id: "bitcoin", symbol: "BTC", name: "Bitcoin"),
-        Coin(id: "ethereum", symbol: "ETH", name: "Ethereum"),
-        Coin(id: "solana", symbol: "SOL", name: "Solana"),
-        Coin(id: "chainlink", symbol: "LINK", name: "Chainlink"),
+    // итоговый коллбэк наружу
+    var onSave: (String, String, Double, Double, String) -> Void
+    
+    // популярные (фиксированный список)
+    private let popularCoins: [Coin] = [
+        Coin(id: "bitcoin",          symbol: "BTC", name: "Bitcoin"),
+        Coin(id: "ethereum",         symbol: "ETH", name: "Ethereum"),
+        Coin(id: "solana",           symbol: "SOL", name: "Solana"),
+        Coin(id: "chainlink",        symbol: "LINK", name: "Chainlink"),
         Coin(id: "the-open-network", symbol: "TON", name: "The Open Network"),
-        Coin(id: "sui", symbol: "SUI", name: "Sui"),
-        Coin(id: "ripple", symbol: "XRP", name: "Ripple")
+        Coin(id: "sui",              symbol: "SUI", name: "Sui"),
+        Coin(id: "ripple",           symbol: "XRP", name: "Ripple")
     ]
     
+    // последние по транзакциям
     private var recentCoins: [Coin] {
         let recentSymbols = Array(Set(transactions.map { $0.symbol }))
         return recentSymbols.compactMap { sym in
-            let tx = transactions.first { $0.symbol == sym }
-            return tx != nil ? Coin(id: tx!.coinId, symbol: sym, name: tx!.name) : nil
-        }.sorted { $0.symbol < $1.symbol }
+            if let tx = transactions.first(where: { $0.symbol == sym }) {
+                return Coin(id: tx.coinId, symbol: sym, name: tx.name)
+            }
+            return nil
+        }
+        .sorted { $0.symbol < $1.symbol }
     }
     
-    var onSave: (String, String, Double, Double, String) -> Void
+    // список для Picker: сначала recent, потом popular без дублей
+    private var allCoinsForPicker: [Coin] {
+        var seen = Set<String>()
+        var out: [Coin] = []
+        for c in recentCoins {
+            if !seen.contains(c.id) { out.append(c); seen.insert(c.id) }
+        }
+        for c in popularCoins {
+            if !seen.contains(c.id) { out.append(c); seen.insert(c.id) }
+        }
+        return out
+    }
     
     var body: some View {
         NavigationStack {
             Form {
-                Section("Выберите монету") {
-                    Picker("Монета", selection: $selectedCoinId) {
-                        Text("Выберите монету").tag("")
-                        ForEach(recentCoins) { coin in
-                            Text("\(coin.symbol) - \(coin.name)").tag(coin.id)
+                Section("Coin") {
+                    Picker("Select coin", selection: $selectedCoinId) {
+                        Text("— select —").tag("")
+                        ForEach(allCoinsForPicker, id: \.id) { coin in
+                            Text("\(coin.symbol) — \(coin.name)").tag(coin.id)
                         }
-                        ForEach(popularCoins) { coin in
-                            Text("\(coin.symbol) - \(coin.name)").tag(coin.id)
-                        }
-                        Text("Другая").tag("other")
+                    }
+                    Button {
+                        showSearchSheet = true
+                    } label: {
+                        Label("Search coin…", systemImage: "magnifyingglass")
                     }
                 }
-                Section("Детали транзакции") {
-                    TextField("Название", text: $name)
-                    TextField("Количество", text: $amount).keyboardType(.decimalPad)
-                    TextField("Цена за единицу ($)", text: $price).keyboardType(.decimalPad)
+                
+                if let coin = selectedCoin {
+                    Section("Selected") {
+                        HStack {
+                            Text("Symbol")
+                            Spacer()
+                            Text(coin.symbol).foregroundStyle(.secondary)
+                        }
+                        HStack {
+                            Text("Name")
+                            Spacer()
+                            Text(coin.name).foregroundStyle(.secondary)
+                        }
+                    }
+                }
+                
+                Section {
+                    Button {
+                        showForm = true
+                    } label: {
+                        Text("Continue")
+                            .frame(maxWidth: .infinity, alignment: .center)
+                    }
+                    .disabled(selectedCoin == nil)
                 }
             }
-            .navigationTitle("Новая транзакция")
+            .navigationTitle("New transaction")
+            .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("Отмена") { dismiss() }
-                }
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Сохранить") {
-                        if let coin = selectedCoin ?? popularCoins.first(where: { $0.id == selectedCoinId }) ?? recentCoins.first(where: { $0.id == selectedCoinId }) {
-                            if let amt = Double(amount), let pr = Double(price) {
-                                onSave(coin.symbol.uppercased(), name.isEmpty ? coin.name : name, amt, pr, coin.id)
-                                dismiss()
-                            }
-                        }
-                    }
-                    .disabled(selectedCoinId.isEmpty || amount.isEmpty || price.isEmpty)
+                    Button("Cancel") { dismiss() }
                 }
             }
-            .onChange(of: selectedCoinId) {
-                if selectedCoinId == "other" {
-                    showSearchSheet = true
-                } else if selectedCoinId != "" {
-                    if let coin = popularCoins.first(where: { $0.id == selectedCoinId }) ?? recentCoins.first(where: { $0.id == selectedCoinId }) {
-                        selectedCoin = coin
-                        name = coin.name
-                    }
+            .onChange(of: selectedCoinId) { newValue in
+                if let c = allCoinsForPicker.first(where: { $0.id == newValue }) {
+                    selectedCoin = c
                 } else {
                     selectedCoin = nil
-                    name = ""
                 }
             }
             .sheet(isPresented: $showSearchSheet) {
+                // Используй свою реализацию SearchCoinView, она вернёт Coin
                 SearchCoinView { selected in
-                    selectedCoin = selected
-                    name = selected.name
-                    selectedCoinId = selected.id
+                    if !selected.id.isEmpty {
+                        selectedCoinId = selected.id
+                        selectedCoin = selected
+                    }
                     showSearchSheet = false
                 }
+                .presentationDetents([.medium])
+                .presentationDragIndicator(.hidden) // убрать индикатор свайпа
+            }
+            .sheet(isPresented: $showForm) {
+                if let coin = selectedCoin {
+                    TransactionFormView(
+                        coin: coin,
+                        onSave: { name, amount, price in
+                            onSave(
+                                coin.symbol.uppercased(),
+                                name.isEmpty ? coin.name : name,
+                                amount,
+                                price,
+                                coin.id
+                            )
+                            showForm = false
+                            dismiss()
+                        }
+                    )
+                    .presentationDetents([.medium])
+                    .presentationDragIndicator(.hidden) // убрать индикатор свайпа
+                }
+                    
             }
         }
     }

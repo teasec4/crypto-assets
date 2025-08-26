@@ -7,6 +7,16 @@ struct ContentView: View {
     @Query(sort: [SortDescriptor(\Transaction.symbol, order: .forward)]) private var transactions: [Transaction]
     @Query private var alerts: [PriceAlert]
     
+    // 1) Персистентные значения (UserDefaults)
+    @AppStorage("sections.showPrice")  private var showPricePersist  = true
+    @AppStorage("sections.showAssets") private var showAssetsPersist = true
+    @AppStorage("sections.showAlerts") private var showAlertsPersist = true
+
+    // 2) Локальные флаги для плавной анимации
+    @State private var showPriceSection  = true
+    @State private var showAssetsSection = true
+    @State private var showAlertsSection = true
+    
     @State private var prices: [String: Double] = [:]
     @State private var isLoading = false
     @State private var showAdd = false
@@ -53,102 +63,164 @@ struct ContentView: View {
     var body: some View {
         NavigationStack {
             List {
-                Section("Price"){
-                    VStack{
-                        LazyVGrid(columns: [
-                            GridItem(.flexible(), spacing: 10),
-                            GridItem(.flexible(), spacing: 10)
-                        ], spacing: 10) {
+                Section {
+                    if showPriceSection {
+                        LazyVGrid(
+                            columns: [GridItem(.flexible(), spacing: 8),
+                                      GridItem(.flexible(), spacing: 8)],
+                            spacing: 8
+                        ) {
                             ForEach(groupedTransactions, id: \.symbol) { item in
-                                if let price = prices[item.coinId] {
-                                    MiniCardView(symbol: item.symbol, price: price)
-                                } else {
-                                    MiniCardView(symbol: item.symbol, price: 0.0)
-                                        .overlay(
-                                            Text("Fetching...")
-                                                .font(.caption)
-                                                .foregroundColor(.secondary)
-                                        )
-                                }
+                                MiniCardView(symbol: item.symbol, price: prices[item.coinId])
+                                    .frame(maxWidth: .infinity)
                             }
                         }
+                        .padding(.vertical, 6)
+                        .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 16))
                     }
-                    
+                } header: {
+                    HStack(spacing: 8) {
+                        Text("Price")
+                            .font(.subheadline.weight(.semibold))
+                        Spacer()
+                        Image(systemName: "chevron.up")
+                            .rotationEffect(.degrees(showPriceSection ? 0 : 180))
+                            .animation(.easeInOut(duration: 0.2), value: showPriceSection)
+                    }
+                    .contentShape(Rectangle())
+                    .onTapGesture { withAnimation { showPriceSection.toggle() } }
+                    .padding(.horizontal, 4)
+                    .padding(.bottom, 2)
                 }
-                Section("Assets"){
-                    ForEach(groupedTransactions, id: \.symbol) { item in
-                        NavigationLink(destination: TransactionDetailView(symbol: item.symbol, price:prices[item.coinId] ?? 0.0)) {
-                            HStack {
+                .transition(.opacity.combined(with: .move(edge: .top)))
+                
+                Section {
+                    if showAssetsSection {
+                        ForEach(groupedTransactions, id: \.symbol) { item in
+                            NavigationLink {
+                                TransactionDetailView(symbol: item.symbol, price: prices[item.coinId] ?? 0)
+                            } label: {
+                                AssetRow(symbol: item.symbol,
+                                         totalAmount: item.totalAmount,
+                                         totalInvested: item.totalInvested,
+                                         price: prices[item.coinId])
+                            }
+                            .transition(.opacity.combined(with: .move(edge: .top)))
+                        }
+                    }
+                } header: {
+                    HStack(spacing: 8) {
+                        Text("Assets")
+                            .font(.subheadline.weight(.semibold))
+                        Spacer()
+                        Image(systemName: "chevron.up")
+                            .rotationEffect(.degrees(showAssetsSection ? 0 : 180))
+                            .animation(.easeInOut(duration: 0.2), value: showAssetsSection)
+                    }
+                    .contentShape(Rectangle())
+                    .onTapGesture { withAnimation { showAssetsSection.toggle() } }
+                    .padding(.horizontal, 4)
+                    .padding(.bottom, 2)
+                }
+                Section {
+                    if showAlertsSection {
+                        ForEach(alerts) { alert in
+                            NavigationLink(destination: TransactionDetailView(symbol: alert.symbol, price: prices[alert.coinId] ?? 0.0)) {
                                 HStack {
-                                    Text("\(item.totalAmount, specifier: "%.4f")")
-                                    Text(item.symbol)
-                                        .font(.headline)
-                                }
-                                Spacer()
-                                if let price = prices[item.coinId] {
-                                    let value = item.totalAmount * price
-                                    let profit = value - item.totalInvested
-                                    VStack(alignment: .trailing) {
-                                        Text("$\(item.totalInvested, specifier: "%.2f")")
-                                        Text("$\(value, specifier: "%.2f")")
-                                            .foregroundColor(.secondary)
-                                    }
-                                    .font(.caption)
+                                    Text("\(alert.symbol) $\(alert.referencePrice, specifier: "%.2f") (\(alert.signedPercentage > 0 ? "+" : "")\(alert.signedPercentage.formatted(.number.precision(.fractionLength(1))))%)")
                                     Spacer()
-                                    Text("$\(profit, specifier: "%.2f") (\(profit > 0 ? "+" : "")\(profit / (item.totalInvested != 0 ? item.totalInvested : 1) * 100, specifier: "%.1f")%)")
-                                        .foregroundColor(profit > 0 ? .green : .red)
+                                    Text(alert.createdAt.formatted(date: .numeric, time: .omitted))
                                         .font(.caption)
-                                } else {
-                                    Text("Fetching price... (ID: \(item.coinId))")
-                                        .font(.caption)
+                                        .foregroundColor(.secondary)
                                 }
                             }
+                            .transition(.opacity.combined(with: .move(edge: .top)))
                         }
                     }
-                }
-                Section("Alerts"){
-                    ForEach(alerts) { alert in
-                        NavigationLink(destination: TransactionDetailView(symbol: alert.symbol, price:prices[alert.coinId] ?? 0.0)){
-                            HStack {
-                                Text("\(alert.symbol) $\(alert.referencePrice, default: "%.2f") (\(alert.signedPercentage > 0 ? "+" : "")\(alert.signedPercentage.formatted(.number.precision(.fractionLength(1))))%)")
-                                Spacer()
-                                Text(alert.createdAt.formatted(date: .numeric, time: .omitted))
-                                    .font(.caption)
-                                    .foregroundColor(.secondary)
-                            }
-                        }
+                } header: {
+                    HStack(spacing: 8) {
+                        Text("Alerts")
+                            .font(.subheadline.weight(.semibold))
+                        Spacer()
+                        Image(systemName: "chevron.up")
+                            .rotationEffect(.degrees(showAlertsSection ? 0 : 180))
+                            .animation(.easeInOut(duration: 0.2), value: showAlertsSection)
                     }
+                    .contentShape(Rectangle())
+                    .onTapGesture { withAnimation { showAlertsSection.toggle() } }
+                    .padding(.horizontal, 4)
+                    .padding(.bottom, 2)
                 }
             }
+            // где NavigationStack { List { ... } }
+            .listStyle(.insetGrouped)
+            .listRowSeparator(.hidden)
+            .scrollContentBackground(.hidden)
+            .background(Color(.systemGroupedBackground).ignoresSafeArea())
+            .listRowBackground(
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .fill(Color(.secondarySystemBackground))
+                    .padding(.vertical, 4)
+            )
+            
             .safeAreaInset(edge: .bottom) {
-                HStack {
-                    Text("Total")
-                        .font(.headline)
-                    Spacer()
-                    VStack(alignment: .trailing) {
-                        Text("$\(portfolioSummary.totalInvested, specifier: "%.2f")")
-                        if portfolioSummary.totalValue > 0 {
-                            let profit = portfolioSummary.totalProfit
+                // один общий inset, внутри — и панель, и FAB
+                ZStack(alignment: .bottomTrailing) {
+                    // твоя панель суммарных значений
+                    HStack(spacing: 12) {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Total invested")
+                                .font(.caption2).foregroundStyle(.secondary)
+                            Text("$\(portfolioSummary.totalInvested, specifier: "%.2f")")
+                                .font(.subheadline.monospacedDigit())
+                        }
+
+                        Divider().frame(height: 24)
+
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Value")
+                                .font(.caption2).foregroundStyle(.secondary)
                             Text("$\(portfolioSummary.totalValue, specifier: "%.2f")")
-                                .foregroundColor(profit > 0 ? .green : .red)
+                                .font(.subheadline.monospacedDigit())
+                                .foregroundStyle(portfolioSummary.totalProfit >= 0 ? .green : .red)
+                        }
+
+                        Spacer()
+
+                        if portfolioSummary.totalValue > 0 {
+                            let p = portfolioSummary.totalProfit
+                            let percent = portfolioSummary.totalInvested == 0 ? 0 : p / portfolioSummary.totalInvested * 100
+                            ProfitChip(profit: p, percent: percent)
+                        } else {
+                            Text("Fetching…")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
                         }
                     }
-                    .font(.caption)
-                    Spacer()
-                    if portfolioSummary.totalValue > 0 {
-                        let profit = portfolioSummary.totalProfit
-                        let percentage = portfolioSummary.totalInvested != 0 ? profit / portfolioSummary.totalInvested * 100 : 0
-                        Text("$\(profit, specifier: "%.2f") (\(profit > 0 ? "+" : "")\(percentage, specifier: "%.1f")%)")
-                            .foregroundColor(profit > 0 ? .green : .red)
-                            .font(.caption)
-                    } else {
-                        Text("Fetching...")
-                            .font(.caption)
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 10)
+                    .background(
+                        RoundedRectangle(cornerRadius: 20, style: .continuous)
+                            .fill(.ultraThinMaterial)
+                            .shadow(radius: 8, y: 2)
+                    )
+                    .padding(.horizontal, 12)
+                    .padding(.bottom, 8)
+
+                    // FAB внутри того же inset — уже не перекрывает панель
+                    Button {
+                        showAdd = true
+                    } label: {
+                        Image(systemName: "plus")
+                            .font(.title3.weight(.bold))
+                            .padding(16)
+                            .background(Circle().fill(.thinMaterial))
+                            .overlay(Circle().stroke(.black.opacity(0.08), lineWidth: 1))
+                            .shadow(radius: 6, y: 2)
                     }
+                    .padding(.trailing, 16)
+                    .padding(.bottom, 75) // тонкая подстройка, чтобы висел над панелью
                 }
-                .padding()
-                .background(Color(.systemBackground))
-                .border(.gray.opacity(0.2), width: 1)
             }
             .overlay {
                 if isLoading && prices.isEmpty {
@@ -158,85 +230,77 @@ struct ContentView: View {
             .navigationTitle("Assets")
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
-                    Button(action: { showAdd = true }) {
-                        Image(systemName: "plus")
-                    }
-                }
-                ToolbarItem(placement: .topBarLeading) {
-                    Button(action: { Task { await loadPrices() } }) {
-                        Image(systemName: "arrow.clockwise")
-                    }
-                }
-                //                ToolbarItem(placement: .bottomBar) {
-                //                                Button(isTestTimerEnabled ? "Stop Test Timer" : "Start Test Timer") {
-                //                                    isTestTimerEnabled.toggle()
-                //                                }
-                //                            }
+                                    Button(action: { Task { await loadPrices() } }) {
+                                        Image(systemName: "arrow.clockwise")
+                                    }
+                                }
             }
-            .sheet(isPresented: $showAdd) {
-                AddTransactionView { symbol, name, amount, price, coinId in
-                    let tx = Transaction(symbol: symbol, name: name, pricePerUnitUSD: price, amount: amount, coinId: coinId)
-                    context.insert(tx)
-                    try? context.save()
-                    Task { await loadPrices() }
-                }
-            }
-            .task {
-                await preloadTopPrices()
-                await loadPrices()
-                await alertManager.requestNotificationPermission()
-            }
-            .onReceive(timer) { _ in
+        }
+        .onAppear {
+            showPriceSection  = showPricePersist
+            showAssetsSection = showAssetsPersist
+            showAlertsSection = showAlertsPersist
+        }
+        .onChange(of: showPriceSection)  { showPricePersist  = $0 }
+        .onChange(of: showAssetsSection) { showAssetsPersist = $0 }
+        .onChange(of: showAlertsSection) { showAlertsPersist = $0 }
+        
+        .sheet(isPresented: $showAdd) {
+            AddTransactionView { symbol, name, amount, price, coinId in
+                let tx = Transaction(symbol: symbol, name: name, pricePerUnitUSD: price, amount: amount, coinId: coinId)
+                context.insert(tx)
+                try? context.save()
                 Task { await loadPrices() }
             }
-            //            .onReceive(testTimer) { _ in
-            //                        if isTestTimerEnabled {
-            //                            Task {
-            //                                prices["bitcoin"] = 30000.0 // Simulate -50% for BTC
-            //                                print("Test timer triggered: Set bitcoin price to 30000.0")
-            //                                await alertManager.checkPriceAlerts(prices: prices)
-            //                            }
-            //                        }
-            //                    }
-            //            .refreshable { await loadPrices() }
-            //            .alert(item: $errorMessage) { message in
-            //                Alert(title: Text("Ошибка"), message: Text(message), dismissButton: .default(Text("OK")))
-            //            }
+            .presentationDetents([.medium])
+            .presentationDragIndicator(.hidden) // убрать индикатор свайпа
+        }
+        
+        .task {
+            await preloadTopPrices()
+            await loadPrices()
+            await alertManager.requestNotificationPermission()
+        }
+        .onReceive(timer) { _ in
+            Task { await loadPrices() }
         }
     }
-    
-    private func preloadTopPrices() async {
-        let topIds = ["bitcoin", "ethereum", "solana", "chainlink", "the-open-network", "sui", "ripple"]
-        do {
-            let topPrices = try await CoinGeckoService.shared.fetchPrices(for: topIds)
-            prices.merge(topPrices) { $1 }
-            print("Preloaded top prices: \(topPrices)")
-        } catch {
-            print("Preload error: \(error)")
+        
+        private func preloadTopPrices() async {
+            let topIds = ["bitcoin", "ethereum", "solana", "chainlink", "the-open-network", "sui", "ripple"]
+            do {
+                let topPrices = try await CoinGeckoService.shared.fetchPrices(for: topIds)
+                prices.merge(topPrices) { $1 }
+                print("Preloaded top prices: \(topPrices)")
+            } catch {
+                print("Preload error: \(error)")
+            }
+        }
+        
+        private func loadPrices() async {
+            isLoading = true
+            let uniqueIds = Set(groupedTransactions.map { $0.coinId }.filter { !$0.isEmpty })
+            print("Requesting prices for IDs: \(uniqueIds.joined(separator: ","))")
+            do {
+                let newPrices = try await CoinGeckoService.shared.fetchPrices(for: Array(uniqueIds))
+                prices.merge(newPrices) { $1 }
+                // Simulate a price change for testing
+                print("Loaded prices: \(prices)")
+                await alertManager.checkPriceAlerts(prices: prices) // Use full prices dictionary
+            } catch {
+                errorMessage = "Не удалось загрузить цены: \(error.localizedDescription)"
+                print("Price load error: \(error)")
+            }
+            isLoading = false
         }
     }
-    
-    private func loadPrices() async {
-        isLoading = true
-        let uniqueIds = Set(groupedTransactions.map { $0.coinId }.filter { !$0.isEmpty })
-        print("Requesting prices for IDs: \(uniqueIds.joined(separator: ","))")
-        do {
-            let newPrices = try await CoinGeckoService.shared.fetchPrices(for: Array(uniqueIds))
-            prices.merge(newPrices) { $1 }
-            // Simulate a price change for testing
-            print("Loaded prices: \(prices)")
-            await alertManager.checkPriceAlerts(prices: prices) // Use full prices dictionary
-        } catch {
-            errorMessage = "Не удалось загрузить цены: \(error.localizedDescription)"
-            print("Price load error: \(error)")
-        }
-        isLoading = false
-    }
-}
+
 
 extension String: Identifiable {
     public var id: String { self }
 }
+
+
 
 #Preview {
     let container = try! ModelContainer(

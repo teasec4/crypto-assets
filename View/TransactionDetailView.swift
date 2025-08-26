@@ -5,8 +5,10 @@ struct TransactionDetailView: View {
     @Environment(\.modelContext) private var context
     @Query private var transactions: [Transaction]
     @Query private var alerts: [PriceAlert]
-    @State private var showAdd = false
+    
+//    @State private var showAdd = false
     @State private var showAlertForm = false
+    
     let symbol: String
     let price: Double
     
@@ -25,88 +27,92 @@ struct TransactionDetailView: View {
     
     var body: some View {
         List {
+            // --- Transactions ---
             Section("Transactions") {
                 ForEach(transactions) { tx in
-                    HStack {
-                        Text("\(tx.amount, specifier: "%.4f")")
-                            .font(.caption)
-                        Text(symbol)
-                            .font(.headline)
-                        Spacer()
-                        VStack(alignment: .trailing) {
-                            Text("$\(tx.amountUSD, specifier: "%.2f")")
-                            Text("$\(tx.pricePerUnitUSD, specifier: "%.2f")")
-                                .foregroundColor(.secondary)
+                    HStack(spacing: 12) {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("\(tx.amount, specifier: "%.4f") \(symbol)")
+                                .font(.subheadline.weight(.semibold))
+                            Text(tx.date.formatted(date: .abbreviated, time: .omitted))
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
                         }
-                        .font(.caption)
                         Spacer()
-                        Text(tx.date.formatted(date: .numeric, time: .omitted))
-                            .font(.caption)
-                            .foregroundColor(.secondary)
+                        VStack(alignment: .trailing, spacing: 2) {
+                            Text("$\(tx.amountUSD, specifier: "%.2f")")
+                                .font(.subheadline.monospacedDigit())
+                            Text("$\(tx.pricePerUnitUSD, specifier: "%.2f")")
+                                .font(.caption.monospacedDigit())
+                                .foregroundStyle(.secondary)
+                        }
                     }
+                    .padding(.vertical, 4)
                 }
                 .onDelete { idx in
                     for i in idx { context.delete(transactions[i]) }
-                    do {
-                        try context.save()
-                        print("Deleted transaction and saved context")
-                    } catch {
-                        print("Failed to save context after deleting transaction: \(error)")
-                    }
+                    try? context.save()
                 }
             }
-            Section("Set Price Alert") {
+            
+            // --- Alerts ---
+            Section("Price Alerts") {
                 ForEach(alerts) { alert in
                     HStack {
-                        Text("$\(alert.referencePrice, default: "%.2f") (\(alert.signedPercentage > 0 ? "+" : "")\(alert.signedPercentage.formatted(.number.precision(.fractionLength(1))))%)")
+                        Text("$\(alert.referencePrice, specifier: "%.2f") (\(alert.signedPercentage > 0 ? "+" : "")\(alert.signedPercentage.formatted(.number.precision(.fractionLength(1))))%)")
                         Spacer()
-                        Text(alert.createdAt.formatted(date: .numeric, time: .omitted))
+                        Text(alert.createdAt.formatted(date: .abbreviated, time: .omitted))
                             .font(.caption)
-                            .foregroundColor(.secondary)
+                            .foregroundStyle(.secondary)
                     }
+                    .padding(.vertical, 4)
                 }
                 .onDelete { idx in
                     for i in idx { context.delete(alerts[i]) }
-                    do {
-                        try context.save()
-                        print("Deleted price alert and saved context")
-                    } catch {
-                        print("Failed to save context after deleting price alert: \(error)")
-                    }
+                    try? context.save()
                 }
-                Button("Add Price Alert") {
+                
+                Button {
                     showAlertForm = true
+                } label: {
+                    Label("Add Price Alert", systemImage: "bell.badge.plus")
+                        .font(.subheadline.weight(.semibold))
+                        .frame(maxWidth: .infinity)
                 }
             }
         }
+        .listStyle(.insetGrouped)
         .navigationTitle("\(symbol) $\(price, specifier: "%.2f")")
-        .toolbar {
-            ToolbarItem(placement: .topBarTrailing) {
-                Button(action: { showAdd = true }) {
-                    Image(systemName: "plus")
-                }
-            }
-        }
-        .sheet(isPresented: $showAdd) {
-            AddTransactionView { _, name, amount, price, coinId in
-                let tx = Transaction(
-                    symbol: symbol,
-                    name: name,
-                    pricePerUnitUSD: price,
-                    amount: amount,
-                    coinId: coinId.isEmpty ? symbol.lowercased() : coinId
-                )
-                context.insert(tx)
-                do {
-                    try context.save()
-                    print("Saved new transaction: \(symbol), amount: \(amount)")
-                } catch {
-                    print("Failed to save new transaction: \(error)")
-                }
-            }
-        }
+//        .toolbar {
+//            ToolbarItem(placement: .topBarTrailing) {
+//                Button {
+//                    showAdd = true
+//                } label: {
+//                    Image(systemName: "plus")
+//                }
+//            }
+//        }
+//        .sheet(isPresented: $showAdd) {
+//            AddTransactionView { _, name, amount, price, coinId in
+//                let tx = Transaction(
+//                    symbol: symbol,
+//                    name: name,
+//                    pricePerUnitUSD: price,
+//                    amount: amount,
+//                    coinId: coinId.isEmpty ? symbol.lowercased() : coinId
+//                )
+//                context.insert(tx)
+//                try? context.save()
+//            }
+//            .presentationDetents([.medium])
+//            .presentationDragIndicator(.hidden) // убрать индикатор свайпа
+//        }
         .sheet(isPresented: $showAlertForm) {
-            AddPriceAlertView(symbol: symbol, coinId: transactions.first?.coinId ?? symbol.lowercased(), currentPrice: price) { symbol, coinId, referencePrice, percentage in
+            AddPriceAlertView(
+                symbol: symbol,
+                coinId: transactions.first?.coinId ?? symbol.lowercased(),
+                currentPrice: price
+            ) { symbol, coinId, referencePrice, percentage in
                 let alert = PriceAlert(
                     symbol: symbol,
                     coinId: coinId,
@@ -114,13 +120,10 @@ struct TransactionDetailView: View {
                     signedPercentage: percentage
                 )
                 context.insert(alert)
-                do {
-                    try context.save()
-                    print("Saved new price alert: \(symbol), percentage: \(percentage)")
-                } catch {
-                    print("Failed to save new price alert: \(error)")
-                }
+                try? context.save()
             }
+            .presentationDetents([.medium])
+            .presentationDragIndicator(.hidden) // убрать индикатор свайпа
         }
     }
 }
